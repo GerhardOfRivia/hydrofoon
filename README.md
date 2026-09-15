@@ -1,70 +1,20 @@
 # hydrofoon
 
-`hydrofoon` is a Linux-only CLI for finding compute platforms on a lab network
+`hydrofoon` is a linux CLI for finding compute platforms on a lab network
 using IPv4 ARP. Enroll each asset's NIC MAC addresses to attach asset IDs and
 names to observations, or scan without an inventory to discover unknown devices.
 It only discovers and tracks devices. It does not deploy software, run remote
 commands, or update platforms.
 
-## Build and check
+written and designed with help from openai's (gpt-6 astra)
 
-Requires Linux and Go 1.23 or newer. The race detector also needs a supported
-architecture and a C compiler. No root privileges or live network are required
-for the automated tests.
-
-### Local Go environment
-
-If you keep a Go toolchain in `.go/toolchain` (with an executable
-`.go/toolchain/bin/go`), activate it in your current Bash shell:
+## quick install
 
 ```bash
-source ./activate
+curl -fsSL https://raw.githubusercontent.com/GerhardOfRivia/hydrofoon/refs/heads/main/install.sh | sh
 ```
 
-Activation checks the local toolchain, creates the Go workspace and cache
-directories under `.go`, and adds the toolchain and `.go/gopath/bin` to `PATH`.
-Your prompt gains a `(hydrofoon)` prefix. You can source the script by its full
-path from any directory; sourcing it again does not duplicate the prompt or
-`PATH` entries. A missing directory or toolchain reports an error before changing
-your shell environment.
-
-Run `hydrofoon_deactivate` to restore your previous prompt and environment.
-If you activate other environments too, deactivate them in reverse order.
-`make activate` prints the sourcing command, since Make cannot change its parent
-shell's environment.
-
-### Commands
-
-```sh
-make build                       # bin/hydrofoon, static Go binary, CGO disabled
-make build VERSION=0.1.0          # embed a release version
-make check                       # formatting, vet, tests, race detector
-./bin/hydrofoon version
-./bin/hydrofoon --help
-```
-
-Equivalent commands:
-
-```sh
-CGO_ENABLED=0 go build -buildvcs=false -trimpath -o bin/hydrofoon ./cmd/hydrofoon
-go fmt ./...
-go vet ./...
-go test ./...
-go test -race ./...
-```
-
-Builds disable automatic VCS stamping so source archives and workspaces without
-Git metadata also build; use `VERSION` for the explicit version stamp.
-
-The executable uses Go libraries directly; it never invokes `arp-scan`, `nmap`,
-`ip`, `ping`, a shell, or another executable. There is no libpcap, external
-database, HTTP server, or web framework dependency. The module pins
-[`github.com/mdlayher/arp`](https://github.com/mdlayher/arp) at
-`v0.0.0-20260528070854-93566ba168e9` (requires Go 1.23), plus its Ethernet/raw
-socket dependencies. YAML uses `gopkg.in/yaml.v3` v3.0.1; other application code
-uses the standard library. `go.sum` records dependency checksums.
-
-## Run
+## run
 
 Only scan networks you are explicitly authorized to scan. Choose an Ethernet
 interface, bridge, or VLAN interface connected to the lab's Layer-2 network.
@@ -97,7 +47,7 @@ addresses and `/32` probes its single address. All requests stay within the
 selected subnet. The local host's address is included in enumeration, but a
 host generally does not answer its own raw ARP request.
 
-### Options
+### options
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -121,7 +71,7 @@ still carries its conflict flag even when the other claimant is hidden.
 Watch filters entity/conflict events by their participant MACs; scan errors
 always appear.
 
-### Privileges
+### privileges
 
 Raw ARP sockets require root or `CAP_NET_RAW`. Running with `sudo` as above is
 the simplest option. To run as your own user, install a **trusted** binary in a
@@ -149,7 +99,7 @@ Capabilities may need to be reapplied after replacing/rebuilding/reinstalling
 the executable. Containers and restricted environments may additionally limit
 raw sockets or network namespace access.
 
-## Enrollment
+## enrollment
 
 See json or yaml for complete, equivalent examples:
 
@@ -196,7 +146,7 @@ as `unknown` in the table. The inventory is read once at startup and is never
 written; restart a watcher to reload enrollment changes. Stored observations
 are reassociated with the current inventory on the next successful scan.
 
-## Scan behavior
+## scan behavior
 
 Each scan binds one raw socket to the selected interface. A dedicated receive
 loop starts before the paced sender. The sender uses `arp.Client.Request`;
@@ -221,7 +171,7 @@ are never treated as successful discovery. A scan fails if distinct observations
 exceed the smaller of eight times its target count and 1,048,576, avoiding
 unbounded memory use during an ARP flood.
 
-## Watch state and event semantics
+## watch state and event semantics
 
 Watch scans immediately, then waits `--interval` after each attempt finishes.
 Scans never overlap. A failed or cancelled scan leaves all observation history,
@@ -257,7 +207,7 @@ do not clear conflicts. Changes in the enrolled asset for a previously recorded
 MAC are reassociations, not new device events. Entity events include all
 recorded participant `macs`; `ip_changed` identifies a single `mac`.
 
-### Persistence
+### persistence
 
 `--state` writes a schema-versioned JSON file, scoped to the **interface name
 and canonical subnet**. Reusing a state file with a different scope fails;
@@ -283,7 +233,7 @@ transactional with file persistence: a crash or broken output pipe between those
 steps can lose events. State records are authoritative observations; stdout is
 not a durable event journal.
 
-## Output schema (version 1)
+## output schema (version 1)
 
 All timestamps are UTC RFC3339 with whole-second precision. IP lists sort
 numerically; observations sort by IP, then MAC. Events use deterministic entity,
@@ -335,7 +285,7 @@ Exit codes: `0` for successful scan/help/version, `1` for input or fatal errors,
 and `130` for context cancellation via SIGINT/SIGTERM. Recoverable watch scan
 errors keep the process running and appear in the event stream and stderr.
 
-## Limitations
+## limitations
 
 - ARP is **IPv4 only** and requires access to the **same Layer-2 network/VLAN**;
   it does not discover through routers. Select a configured VLAN interface when
@@ -356,7 +306,7 @@ errors keep the process running and appear in the event stream and stderr.
 - History is bounded and retained until you archive/reset the state. There is
   no automatic retention policy, event replay service, or multi-writer support.
 
-## Source layout and tests
+## source layout and tests
 
 - `cmd/hydrofoon`: Linux entry point and signal handling.
 - `internal/packet`: Linux packet adapter and ARP validation.
