@@ -1,0 +1,78 @@
+#!/bin/bash
+# Source this file in Bash: source /path/to/hydrofoon/activate
+
+if [ -z "${BASH_VERSION:-}" ]; then
+    printf 'hydrofoon: activate requires Bash.\n' >&2
+    return 1 2>/dev/null || exit 1
+fi
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    printf 'hydrofoon: use "source ./activate" to update your current shell.\n' >&2
+    exit 1
+fi
+
+_hydrofoon_activate() {
+    local go_dir name
+    go_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/.go" || return 1
+
+    if [[ ! -d "$go_dir" ]]; then
+        printf 'hydrofoon: missing Go directory: %s\n' "$go_dir" >&2
+        printf 'Extract a Go toolchain into %s/toolchain, then source activate again.\n' "$go_dir" >&2
+        return 1
+    fi
+    if [[ ! -x "$go_dir/toolchain/bin/go" ]]; then
+        printf 'hydrofoon: missing executable Go toolchain: %s/toolchain/bin/go\n' "$go_dir" >&2
+        return 1
+    fi
+
+    # Check and prepare everything before changing the shell environment.
+    mkdir -p -- "$go_dir/gopath" "$go_dir/modcache" "$go_dir/buildcache" || return 1
+    if [[ "${_HYDROFOON_ACTIVE-}" == "$go_dir" ]]; then
+        return 0
+    fi
+    if [[ -n "${_HYDROFOON_ACTIVE-}" ]]; then
+        hydrofoon_deactivate
+    fi
+
+    # Keep unset variables distinct from variables with empty values.
+    declare -gA _HYDROFOON_OLD_ENV=()
+    for name in PATH GOPATH GOMODCACHE GOCACHE HYDROFOON_GO_DIR PS1; do
+        if [[ "${!name+x}" ]]; then
+            _HYDROFOON_OLD_ENV["$name"]="${!name}"
+        fi
+    done
+
+    # A separate name leaves Python virtualenv's deactivate function available.
+    hydrofoon_deactivate() {
+        local name
+        for name in PATH GOPATH GOMODCACHE GOCACHE HYDROFOON_GO_DIR PS1; do
+            if [[ "${_HYDROFOON_OLD_ENV[$name]+x}" ]]; then
+                printf -v "$name" '%s' "${_HYDROFOON_OLD_ENV[$name]}"
+            else
+                unset "$name"
+            fi
+        done
+        unset _HYDROFOON_OLD_ENV _HYDROFOON_ACTIVE
+        unset -f hydrofoon_deactivate
+        hash -r
+    }
+
+    export HYDROFOON_GO_DIR="$go_dir"
+    export GOPATH="$go_dir/gopath"
+    export GOMODCACHE="$go_dir/modcache"
+    export GOCACHE="$go_dir/buildcache"
+    export PATH="$go_dir/toolchain/bin:$go_dir/gopath/bin:${PATH-}"
+    if [[ "${PS1+x}" ]]; then
+        PS1="(hydrofoon) $PS1"
+    fi
+    _HYDROFOON_ACTIVE="$go_dir"
+    hash -r
+}
+
+if _hydrofoon_activate; then
+    unset -f _hydrofoon_activate
+    return 0
+else
+    unset -f _hydrofoon_activate
+    return 1
+fi

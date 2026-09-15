@@ -1,0 +1,130 @@
+name: hydrofoon build and release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v[0-9]*"
+      - "[0-9]*"
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hydrofoon-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v5
+
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: run tests
+        run: make test
+
+  build:
+    name: build ${{ matrix.goos }} / ${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    needs: test
+
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v5
+
+      - name: set up go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: determine version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^v?[0-9][0-9A-Za-z.+-]*$ ]]; then
+              echo "Unsupported release tag: $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+            printf 'VERSION=%s\n' "$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            printf 'VERSION=dev-%s\n' "${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: build and package binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          make build VERSION="$VERSION"
+          (cd bin && sha256sum hydrofoon > checksums.txt)
+          tar -cf "dist/hydrofoon-${GOOS}-${GOARCH}.tar" -C bin hydrofoon checksums.txt
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydrofoon-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/hydrofoon-${{ matrix.goos }}-${{ matrix.goarch }}.tar
+          if-no-files-found: error
+
+  release:
+    name: create release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    permissions:
+      contents: write
+    concurrency:
+      group: hydrofoon-release
+      queue: max
+
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v5
+
+      - name: download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hydrofoon-*
+          merge-multiple: true
+          path: release
+
+      - name: prepare release files
+        working-directory: release
+        run: |
+          sha256sum hydrofoon-linux-amd64.tar hydrofoon-linux-arm64.tar > checksums.txt
+          sha256sum -c checksums.txt
+
+      - name: create versioned release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_flags=()
+          if [[ "${GITHUB_REF_NAME%%+*}" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --verify-tag \
+            --title "hydrofoon $GITHUB_REF_NAME" \
+            "${release_flags[@]}" \
+            --notes "Automated release for $GITHUB_REF_NAME"
