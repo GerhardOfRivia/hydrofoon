@@ -10,22 +10,32 @@ INSTALL_DIR="${HYDROFOON_INSTALL_DIR:-$HOME/.local/bin}"
 TEMP_DIR=""
 STAGED_BIN=""
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+if [ -t 1 ] &&
+   [ -z "${NO_COLOR:-}" ] &&
+   [ "${TERM:-dumb}" != dumb ] &&
+   command -v tput >/dev/null 2>&1 &&
+   colors=$(tput colors 2>/dev/null) &&
+   [ "$colors" -ge 8 ] 2>/dev/null &&
+   GREEN=$(tput setaf 2 2>/dev/null) &&
+   YELLOW=$(tput setaf 3 2>/dev/null) &&
+   RED=$(tput setaf 1 2>/dev/null) &&
+   NC=$(tput sgr0 2>/dev/null)
+then
+    : # Color setup succeeded.
+else
+    GREEN='' YELLOW='' RED='' NC=''
+fi
 
 info() {
-    printf "${GREEN}[INFO]${NC} %s\n" "$1"
+    printf '%s[INFO]%s %s\n' "$GREEN" "$NC" "$*"
 }
 
 warn() {
-    printf "${YELLOW}[WARN]${NC} %s\n" "$1"
+    printf '%s[WARN]%s %s\n' "$YELLOW" "$NC" "$*"
 }
 
 error() {
-    printf "${RED}[ERROR]${NC} %s\n" "$1"
+    printf '%s[ERROR]%s %s\n' "$RED" "$NC" "$*"
     exit 1
 }
 
@@ -193,7 +203,12 @@ main() {
     check_path
 
     echo ""
-    info "Installation complete! Run 'hydrofoon --help' to get started."
+    
+    info "Installation complete! To run without root install into a root-owned location, then grant only the raw-socket capability."
+    info "  sudo install -o root -g root -m 0755 ${INSTALL_DIR}/hydrofoon /usr/local/bin/${PACKAGE}"
+    info "  sudo setcap cap_net_raw=ep /usr/local/bin/${PACKAGE}"
+
+    info "Run '${PACKAGE} --help' to get started."
 }
 
 main

@@ -14,24 +14,52 @@ written and designed with help from openai's (gpt-6 astra)
 curl -fsSL https://raw.githubusercontent.com/GerhardOfRivia/hydrofoon/refs/heads/main/install.sh | sh
 ```
 
+### privileges
+
+Raw ARP sockets require root or `CAP_NET_RAW`. Running with `sudo` as above is
+the simplest option. To run as your own user, install a **trusted** binary in a
+root-owned location, then grant only the raw-socket capability:
+
+```sh
+sudo install -o root -g root -m 0755 bin/hydrofoon /usr/local/bin/hydrofoon
+sudo setcap cap_net_raw=ep /usr/local/bin/hydrofoon
+getcap /usr/local/bin/hydrofoon
+hydrofoon scan --interface eno1 --cidr 10.50.0.0/24
+```
+
+These are manual administrative setup commands, not subprocesses launched by
+the application. `setcap`/`getcap` come from your distribution's capability
+utilities package. The capability permits raw packet access; grant it only to
+a binary you trust and keep the binary protected from untrusted replacement.
+Your user also needs write access to the watch state directory. Remove the
+grant with:
+
+```sh
+sudo setcap -r /usr/local/bin/hydrofoon
+```
+
+Capabilities may need to be reapplied after replacing/rebuilding/reinstalling
+the executable. Containers and restricted environments may additionally limit
+raw sockets or network namespace access.
+
 ## run
 
 Only scan networks you are explicitly authorized to scan. Choose an Ethernet
 interface, bridge, or VLAN interface connected to the lab's Layer-2 network.
 
 ```sh
-sudo ./bin/hydrofoon scan --interface eno1 --cidr 10.50.0.0/24
+hydrofoon scan --interface eno1 --cidr 10.50.0.0/24
 
-sudo ./bin/hydrofoon scan --interface eno1 --cidr 10.50.0.0/24 \
+hydrofoon scan --interface eno1 --cidr 10.50.0.0/24 \
   --inventory devices.json
 
-sudo ./bin/hydrofoon scan --interface eno1 --cidr 10.50.0.0/24 \
+hydrofoon scan --interface eno1 --cidr 10.50.0.0/24 \
   --mac 02:11:22:33:44:01 --json
 
-sudo ./bin/hydrofoon watch --interface eno1 --cidr 10.50.0.0/24 \
+hydrofoon watch --interface eno1 --cidr 10.50.0.0/24 \
   --inventory devices.json --interval 30s --state hydrofoon-state.json
 
-sudo ./bin/hydrofoon watch --interface eno1 --cidr 10.50.0.0/24 \
+hydrofoon watch --interface eno1 --cidr 10.50.0.0/24 \
   --inventory devices.yaml --state hydrofoon-state.json --json
 ```
 
@@ -71,33 +99,6 @@ still carries its conflict flag even when the other claimant is hidden.
 Watch filters entity/conflict events by their participant MACs; scan errors
 always appear.
 
-### privileges
-
-Raw ARP sockets require root or `CAP_NET_RAW`. Running with `sudo` as above is
-the simplest option. To run as your own user, install a **trusted** binary in a
-root-owned location, then grant only the raw-socket capability:
-
-```sh
-sudo install -o root -g root -m 0755 bin/hydrofoon /usr/local/bin/hydrofoon
-sudo setcap cap_net_raw=ep /usr/local/bin/hydrofoon
-getcap /usr/local/bin/hydrofoon
-hydrofoon scan --interface eno1 --cidr 10.50.0.0/24
-```
-
-These are manual administrative setup commands, not subprocesses launched by
-the application. `setcap`/`getcap` come from your distribution's capability
-utilities package. The capability permits raw packet access; grant it only to
-a binary you trust and keep the binary protected from untrusted replacement.
-Your user also needs write access to the watch state directory. Remove the
-grant with:
-
-```sh
-sudo setcap -r /usr/local/bin/hydrofoon
-```
-
-Capabilities may need to be reapplied after replacing/rebuilding/reinstalling
-the executable. Containers and restricted environments may additionally limit
-raw sockets or network namespace access.
 
 ## enrollment
 
